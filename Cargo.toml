@@ -1,0 +1,46 @@
+[package]
+name = "loki-file-access"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Cross-platform, frontend-agnostic file picker and capability-based file access for Rust"
+repository = "https://github.com/appthere/loki-file-access"
+keywords = ["file-picker", "android", "ios", "saf", "cross-platform"]
+categories = ["filesystem", "os", "gui"]
+
+[features]
+default = []
+
+[dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))'.dependencies]
+rfd = "0.15"
+pollster = "0.4"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+objc2-ui-kit = { version = "0.3", features = ["UIDocumentPickerViewController", "UIViewController", "UIResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSURL", "NSData", "NSError"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+  "HtmlInputElement", "File", "FileList", "Event",
+  "EventTarget", "Document", "Window", "Blob", "Url"
+] }
+js-sys = "0.3"
+
+[dev-dependencies]
+pollster = "0.4"
+tempfile = "3"
+serde_json = "1"
+base64 = "0.22"
