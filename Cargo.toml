@@ -1,6 +1,6 @@
 [package]
 name = "loki-file-access"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "Cross-platform, frontend-agnostic file picker and capability-based file access for Rust"
