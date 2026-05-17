@@ -21,8 +21,19 @@
 //! keeping the main-thread run loop free to process GCD events.  On
 //! **Windows** and **Linux** there is no main-thread constraint, so `.await`
 //! is equally correct there.
+//!
+//! ## Linux fallback
+//!
+//! On Linux, rfd uses the XDG Desktop Portal via D-Bus.  When the portal is
+//! unavailable (e.g. ChromeOS Crostini), rfd returns `None`.  In that case
+//! the picker falls back to `zenity` (a GNOME subprocess dialog) if it is
+//! installed.  The zenity call runs on a dedicated thread so it does not block
+//! the async executor.
 
 mod filters;
+#[cfg(target_os = "linux")]
+mod zenity;
+
 use filters::{is_valid_extension, mime_types_to_extensions};
 
 use crate::api::{PickOptions, SaveOptions};
@@ -33,15 +44,15 @@ use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, Writ
 ///
 /// Setting it to `"none"` disables the picker and surfaces a clear error
 /// instead of a silent no-op.  This is a developer escape hatch for
-/// environments where neither the XDG Desktop Portal nor any fallback is
-/// available.  Valid values: `"auto"` (default), `"none"`.
+/// environments where neither the XDG Desktop Portal nor zenity is available.
+/// Valid values: `"auto"` (default), `"none"`.
 #[cfg(target_os = "linux")]
 fn check_backend_env() -> Result<(), PickerError> {
     if std::env::var("LOKI_FILE_ACCESS_BACKEND").as_deref() == Ok("none") {
         return Err(PickerError::Platform {
             message:
                 "file picker disabled via LOKI_FILE_ACCESS_BACKEND=none. \
-                 On Linux, the XDG Desktop Portal must be running for the file picker to work. \
+                 On Linux, the XDG Desktop Portal or zenity must be available. \
                  Unset LOKI_FILE_ACCESS_BACKEND or set it to \"auto\" to re-enable."
                     .into(),
         });
@@ -62,6 +73,8 @@ fn check_backend_env() -> Result<(), PickerError> {
 /// characters invalid for `IFileOpenDialog::SetFileTypes` are silently
 /// dropped; if all extensions are invalid the filter is omitted entirely so
 /// that all files remain visible.
+///
+/// On Linux, if the XDG Desktop Portal is unavailable, falls back to zenity.
 ///
 /// # Errors
 ///
@@ -85,39 +98,60 @@ pub(crate) async fn pick_open_single(
 ) -> Result<Option<FileAccessToken>, PickerError> {
     check_backend_env()?;
 
-    let mut dialog = rfd::AsyncFileDialog::new();
-
-    if !options.mime_types.is_empty() {
-        let extensions = mime_types_to_extensions(&options.mime_types);
-        let ext_refs: Vec<&str> = extensions
-            .iter()
-            .map(String::as_str)
+    // Capture filter data before building the rfd dialog so the zenity fallback
+    // thread closure can take ownership of the same values.
+    let filter_label = options.filter_label.as_deref().unwrap_or("Files").to_owned();
+    let filter_exts: Vec<String> = if !options.mime_types.is_empty() {
+        mime_types_to_extensions(&options.mime_types)
+            .into_iter()
             .filter(|e| is_valid_extension(e))
-            .collect();
-        if !ext_refs.is_empty() {
-            let label = options.filter_label.as_deref().unwrap_or("Files");
-            dialog = dialog.add_filter(label, &ext_refs);
-        }
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if !filter_exts.is_empty() {
+        let ext_refs: Vec<&str> = filter_exts.iter().map(String::as_str).collect();
+        dialog = dialog.add_filter(&filter_label, &ext_refs);
     }
 
     match dialog.pick_file().await {
-        None => {
-            tracing::warn!(
-                "File picker returned no selection. \
-                 On Linux this can mean the dialog was cancelled or that the \
-                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
-                 not running. ChromeOS Crostini users: the portal is not \
-                 available in the Crostini container by default — see the \
-                 README for workarounds."
-            );
-            Ok(None)
-        }
         Some(h) => {
             let path = h.path().to_path_buf();
             let display_name = file_name_from_path(&path);
             Ok(Some(FileAccessToken {
                 inner: TokenInner::Desktop { path, display_name },
             }))
+        }
+        None => {
+            #[cfg(target_os = "linux")]
+            {
+                if zenity::is_zenity_available() {
+                    tracing::debug!("XDG Desktop Portal unavailable; falling back to zenity");
+                    let (fut, state) = crate::future::new_pick_future();
+                    std::thread::spawn(move || {
+                        let result =
+                            zenity::pick_file("Open File".into(), filter_label, filter_exts)
+                                .map(|opt| {
+                                    opt.map(|path| {
+                                        let display_name = file_name_from_path(&path);
+                                        FileAccessToken {
+                                            inner: TokenInner::Desktop { path, display_name },
+                                        }
+                                    })
+                                });
+                        crate::future::deliver(&state, result);
+                    });
+                    return fut.await;
+                }
+                tracing::warn!(
+                    "File picker returned no result. \
+                     On ChromeOS Crostini or minimal Linux environments, \
+                     install zenity for file dialog support: sudo apt install zenity"
+                );
+            }
+            Ok(None)
         }
     }
 }
@@ -127,6 +161,8 @@ pub(crate) async fn pick_open_single(
 /// Applies the same extension-validation logic as [`pick_open_single`]:
 /// invalid extensions (containing dots etc.) are dropped, and if none remain
 /// the filter is omitted so all files stay visible.
+///
+/// On Linux, if the XDG Desktop Portal is unavailable, falls back to zenity.
 ///
 /// # Errors
 ///
@@ -150,33 +186,23 @@ pub(crate) async fn pick_open_multi(
 ) -> Result<Vec<FileAccessToken>, PickerError> {
     check_backend_env()?;
 
-    let mut dialog = rfd::AsyncFileDialog::new();
-
-    if !options.mime_types.is_empty() {
-        let extensions = mime_types_to_extensions(&options.mime_types);
-        let ext_refs: Vec<&str> = extensions
-            .iter()
-            .map(String::as_str)
+    let filter_label = options.filter_label.as_deref().unwrap_or("Files").to_owned();
+    let filter_exts: Vec<String> = if !options.mime_types.is_empty() {
+        mime_types_to_extensions(&options.mime_types)
+            .into_iter()
             .filter(|e| is_valid_extension(e))
-            .collect();
-        if !ext_refs.is_empty() {
-            let label = options.filter_label.as_deref().unwrap_or("Files");
-            dialog = dialog.add_filter(label, &ext_refs);
-        }
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if !filter_exts.is_empty() {
+        let ext_refs: Vec<&str> = filter_exts.iter().map(String::as_str).collect();
+        dialog = dialog.add_filter(&filter_label, &ext_refs);
     }
 
     match dialog.pick_files().await {
-        None => {
-            tracing::warn!(
-                "File picker returned no selection. \
-                 On Linux this can mean the dialog was cancelled or that the \
-                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
-                 not running. ChromeOS Crostini users: the portal is not \
-                 available in the Crostini container by default — see the \
-                 README for workarounds."
-            );
-            Ok(vec![])
-        }
         Some(list) => {
             let tokens = list
                 .into_iter()
@@ -190,6 +216,38 @@ pub(crate) async fn pick_open_multi(
                 .collect();
             Ok(tokens)
         }
+        None => {
+            #[cfg(target_os = "linux")]
+            {
+                if zenity::is_zenity_available() {
+                    tracing::debug!("XDG Desktop Portal unavailable; falling back to zenity");
+                    let (fut, state) = crate::future::new_pick_future();
+                    std::thread::spawn(move || {
+                        let result =
+                            zenity::pick_files("Open Files".into(), filter_label, filter_exts)
+                                .map(|paths| {
+                                    paths
+                                        .into_iter()
+                                        .map(|path| {
+                                            let display_name = file_name_from_path(&path);
+                                            FileAccessToken {
+                                                inner: TokenInner::Desktop { path, display_name },
+                                            }
+                                        })
+                                        .collect()
+                                });
+                        crate::future::deliver(&state, result);
+                    });
+                    return fut.await;
+                }
+                tracing::warn!(
+                    "File picker returned no result. \
+                     On ChromeOS Crostini or minimal Linux environments, \
+                     install zenity for file dialog support: sudo apt install zenity"
+                );
+            }
+            Ok(vec![])
+        }
     }
 }
 
@@ -198,6 +256,8 @@ pub(crate) async fn pick_open_multi(
 /// Applies the same extension-validation logic as the open-picker functions:
 /// the MIME type is converted to an extension, and `add_filter` is only called
 /// if the resulting extension is valid for the native dialog.
+///
+/// On Linux, if the XDG Desktop Portal is unavailable, falls back to zenity.
 ///
 /// # Errors
 ///
@@ -221,42 +281,66 @@ pub(crate) async fn pick_save(
 ) -> Result<Option<FileAccessToken>, PickerError> {
     check_backend_env()?;
 
-    let mut dialog = rfd::AsyncFileDialog::new();
+    let suggested_name = options.suggested_name;
+    let filter_label = "File".to_owned();
+    let filter_exts: Vec<String> = if let Some(ref mime) = options.mime_type {
+        mime_types_to_extensions(std::slice::from_ref(mime))
+            .into_iter()
+            .filter(|e| is_valid_extension(e))
+            .collect()
+    } else {
+        vec![]
+    };
 
-    if let Some(ref name) = options.suggested_name {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if let Some(ref name) = suggested_name {
         dialog = dialog.set_file_name(name);
     }
-
-    if let Some(ref mime) = options.mime_type {
-        let extensions = mime_types_to_extensions(std::slice::from_ref(mime));
-        let ext_refs: Vec<&str> = extensions
-            .iter()
-            .map(String::as_str)
-            .filter(|e| is_valid_extension(e))
-            .collect();
-        if !ext_refs.is_empty() {
-            dialog = dialog.add_filter("File", &ext_refs);
-        }
+    if !filter_exts.is_empty() {
+        let ext_refs: Vec<&str> = filter_exts.iter().map(String::as_str).collect();
+        dialog = dialog.add_filter(&filter_label, &ext_refs);
     }
 
     match dialog.save_file().await {
-        None => {
-            tracing::warn!(
-                "Save-file picker returned no selection. \
-                 On Linux this can mean the dialog was cancelled or that the \
-                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
-                 not running. ChromeOS Crostini users: the portal is not \
-                 available in the Crostini container by default — see the \
-                 README for workarounds."
-            );
-            Ok(None)
-        }
         Some(h) => {
             let path = h.path().to_path_buf();
             let display_name = file_name_from_path(&path);
             Ok(Some(FileAccessToken {
                 inner: TokenInner::Desktop { path, display_name },
             }))
+        }
+        None => {
+            #[cfg(target_os = "linux")]
+            {
+                if zenity::is_zenity_available() {
+                    tracing::debug!("XDG Desktop Portal unavailable; falling back to zenity");
+                    let (fut, state) = crate::future::new_pick_future();
+                    std::thread::spawn(move || {
+                        let result = zenity::pick_save(
+                            "Save File".into(),
+                            suggested_name,
+                            filter_label,
+                            filter_exts,
+                        )
+                        .map(|opt| {
+                            opt.map(|path| {
+                                let display_name = file_name_from_path(&path);
+                                FileAccessToken {
+                                    inner: TokenInner::Desktop { path, display_name },
+                                }
+                            })
+                        });
+                        crate::future::deliver(&state, result);
+                    });
+                    return fut.await;
+                }
+                tracing::warn!(
+                    "Save-file picker returned no result. \
+                     On ChromeOS Crostini or minimal Linux environments, \
+                     install zenity for file dialog support: sudo apt install zenity"
+                );
+            }
+            Ok(None)
         }
     }
 }

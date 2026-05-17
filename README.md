@@ -43,31 +43,65 @@ On Linux, loki-file-access uses the [XDG Desktop Portal](https://flatpak.github.
 
 Most desktop Linux environments (GNOME, KDE, etc.) provide this portal automatically. If the portal is not running, the file picker will silently return `None` — enable a `tracing` subscriber in your application to see the warning message that explains this.
 
+### Zenity fallback
+
+When the XDG Desktop Portal is unavailable, loki-file-access automatically
+falls back to [zenity](https://help.gnome.org/users/zenity/stable/) if it is
+installed. Zenity is a GNOME utility that shows GTK file-chooser dialogs from
+the command line.
+
+Install zenity on Debian/Ubuntu/ChromeOS Crostini:
+
+```sh
+sudo apt install zenity
+```
+
+Install on other distributions:
+
+```sh
+# Fedora
+sudo dnf install zenity
+
+# Arch
+sudo pacman -S zenity
+```
+
+If zenity is also unavailable, a `tracing::warn!` is emitted and the picker
+returns no selection.
+
 ### ChromeOS Crostini
 
-The XDG Desktop Portal is **not** available inside the Crostini Linux container. As a result, the file picker will not open a dialog on ChromeOS Crostini with the current version of `rfd`.
+The XDG Desktop Portal is **not** available inside the Crostini Linux
+container. Install zenity and the file picker will work via the zenity
+fallback:
 
-A future version of this crate may add a GTK3/zenity fallback for environments without the portal. For now, ChromeOS Crostini users will see a `tracing::warn!` message instead of a dialog.
+```sh
+sudo apt install zenity
+```
 
 ### Troubleshooting
 
 **The file picker does nothing on my Linux system.**
 
-1. Ensure D-Bus is running and the XDG Desktop Portal is installed:
+1. Install zenity (the automatic fallback when the portal is unavailable):
    ```sh
-   # Debian/Ubuntu
-   sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk
-
-   # Fedora
-   sudo dnf install xdg-desktop-portal xdg-desktop-portal-gtk
-
-   # Arch
-   sudo pacman -S xdg-desktop-portal xdg-desktop-portal-gtk
+   sudo apt install zenity          # Debian/Ubuntu/Crostini
+   sudo dnf install zenity          # Fedora
+   sudo pacman -S zenity            # Arch
    ```
 
-2. Enable a `tracing` subscriber in your app (e.g. `tracing_subscriber::fmt::init()`) to see diagnostic messages from the picker.
+2. If zenity is installed but the picker still does nothing, ensure the XDG
+   Desktop Portal is present for your desktop environment:
+   ```sh
+   # Debian/Ubuntu — GNOME
+   sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk
+   ```
 
-3. If you want to explicitly disable the picker and surface a clear error instead of a silent no-op, set the environment variable:
+3. Enable a `tracing` subscriber in your app (e.g. `tracing_subscriber::fmt::init()`)
+   to see diagnostic messages from the picker.
+
+4. To explicitly disable the picker and surface a clear error instead of a
+   silent no-op, set the environment variable:
    ```sh
    LOKI_FILE_ACCESS_BACKEND=none ./your-app
    ```
