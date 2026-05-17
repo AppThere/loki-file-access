@@ -29,6 +29,32 @@ use crate::api::{PickOptions, SaveOptions};
 use crate::error::{AccessError, PickerError};
 use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
 
+/// On Linux, check the `LOKI_FILE_ACCESS_BACKEND` environment variable.
+///
+/// Setting it to `"none"` disables the picker and surfaces a clear error
+/// instead of a silent no-op.  This is a developer escape hatch for
+/// environments where neither the XDG Desktop Portal nor any fallback is
+/// available.  Valid values: `"auto"` (default), `"none"`.
+#[cfg(target_os = "linux")]
+fn check_backend_env() -> Result<(), PickerError> {
+    if std::env::var("LOKI_FILE_ACCESS_BACKEND").as_deref() == Ok("none") {
+        return Err(PickerError::Platform {
+            message:
+                "file picker disabled via LOKI_FILE_ACCESS_BACKEND=none. \
+                 On Linux, the XDG Desktop Portal must be running for the file picker to work. \
+                 Unset LOKI_FILE_ACCESS_BACKEND or set it to \"auto\" to re-enable."
+                    .into(),
+        });
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[inline(always)]
+fn check_backend_env() -> Result<(), PickerError> {
+    Ok(())
+}
+
 /// Pick a single file for reading.
 ///
 /// Converts `options.mime_types` to file-extension filters understood by the
@@ -57,6 +83,8 @@ use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, Writ
 pub(crate) async fn pick_open_single(
     options: PickOptions,
 ) -> Result<Option<FileAccessToken>, PickerError> {
+    check_backend_env()?;
+
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if !options.mime_types.is_empty() {
@@ -73,7 +101,17 @@ pub(crate) async fn pick_open_single(
     }
 
     match dialog.pick_file().await {
-        None => Ok(None),
+        None => {
+            tracing::warn!(
+                "File picker returned no selection. \
+                 On Linux this can mean the dialog was cancelled or that the \
+                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
+                 not running. ChromeOS Crostini users: the portal is not \
+                 available in the Crostini container by default — see the \
+                 README for workarounds."
+            );
+            Ok(None)
+        }
         Some(h) => {
             let path = h.path().to_path_buf();
             let display_name = file_name_from_path(&path);
@@ -110,6 +148,8 @@ pub(crate) async fn pick_open_single(
 pub(crate) async fn pick_open_multi(
     options: PickOptions,
 ) -> Result<Vec<FileAccessToken>, PickerError> {
+    check_backend_env()?;
+
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if !options.mime_types.is_empty() {
@@ -126,7 +166,17 @@ pub(crate) async fn pick_open_multi(
     }
 
     match dialog.pick_files().await {
-        None => Ok(vec![]),
+        None => {
+            tracing::warn!(
+                "File picker returned no selection. \
+                 On Linux this can mean the dialog was cancelled or that the \
+                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
+                 not running. ChromeOS Crostini users: the portal is not \
+                 available in the Crostini container by default — see the \
+                 README for workarounds."
+            );
+            Ok(vec![])
+        }
         Some(list) => {
             let tokens = list
                 .into_iter()
@@ -169,6 +219,8 @@ pub(crate) async fn pick_open_multi(
 pub(crate) async fn pick_save(
     options: SaveOptions,
 ) -> Result<Option<FileAccessToken>, PickerError> {
+    check_backend_env()?;
+
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if let Some(ref name) = options.suggested_name {
@@ -188,7 +240,17 @@ pub(crate) async fn pick_save(
     }
 
     match dialog.save_file().await {
-        None => Ok(None),
+        None => {
+            tracing::warn!(
+                "Save-file picker returned no selection. \
+                 On Linux this can mean the dialog was cancelled or that the \
+                 XDG Desktop Portal (org.freedesktop.portal.FileChooser) is \
+                 not running. ChromeOS Crostini users: the portal is not \
+                 available in the Crostini container by default — see the \
+                 README for workarounds."
+            );
+            Ok(None)
+        }
         Some(h) => {
             let path = h.path().to_path_buf();
             let display_name = file_name_from_path(&path);
