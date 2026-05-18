@@ -766,7 +766,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "loki-file-access"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64",
  "jni",
@@ -781,6 +781,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
