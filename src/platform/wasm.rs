@@ -25,9 +25,7 @@
 
 use crate::api::{PickOptions, SaveOptions};
 use crate::error::{AccessError, PickerError};
-use crate::token::{
-    FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek,
-};
+use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
 
 /// Pick a single file for reading.
 pub(crate) async fn pick_open_single(
@@ -52,9 +50,7 @@ pub(crate) async fn pick_open_multi(
 pub(crate) async fn pick_save(
     options: SaveOptions,
 ) -> Result<Option<FileAccessToken>, PickerError> {
-    let name = options
-        .suggested_name
-        .unwrap_or_else(|| "download".into());
+    let name = options.suggested_name.unwrap_or_else(|| "download".into());
     Ok(Some(FileAccessToken {
         inner: TokenInner::Wasm {
             data: Vec::new(),
@@ -67,9 +63,7 @@ pub(crate) async fn pick_save(
 /// Open a WASM token for reading (reads from the in-memory buffer).
 pub(crate) fn open_read(inner: &TokenInner) -> Result<Box<dyn ReadSeek>, AccessError> {
     match inner {
-        TokenInner::Wasm { data, .. } => {
-            Ok(Box::new(std::io::Cursor::new(data.clone())))
-        }
+        TokenInner::Wasm { data, .. } => Ok(Box::new(std::io::Cursor::new(data.clone()))),
         _ => Err(AccessError::Platform {
             message: "non-WASM token on WASM platform".into(),
         }),
@@ -79,9 +73,7 @@ pub(crate) fn open_read(inner: &TokenInner) -> Result<Box<dyn ReadSeek>, AccessE
 /// Open a WASM token for writing (writes to an in-memory buffer).
 pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
     match inner {
-        TokenInner::Wasm { data, .. } => {
-            Ok(Box::new(std::io::Cursor::new(data.clone())))
-        }
+        TokenInner::Wasm { data, .. } => Ok(Box::new(std::io::Cursor::new(data.clone()))),
         _ => Err(AccessError::Platform {
             message: "non-WASM token on WASM platform".into(),
         }),
@@ -137,21 +129,18 @@ async fn pick_files(
         let cb = wasm_bindgen::closure::Closure::once_into_js(move || {
             let _ = resolve_clone.call0(&wasm_bindgen::JsValue::NULL);
         });
-        let _ = input.add_event_listener_with_callback(
-            "change",
-            cb.as_ref().unchecked_ref(),
-        );
+        let _ = input.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
     });
 
     // Trigger the file dialog.
     input.click();
 
     // Wait for the user to select files.
-    JsFuture::from(promise).await.map_err(|e| {
-        PickerError::Platform {
+    JsFuture::from(promise)
+        .await
+        .map_err(|e| PickerError::Platform {
             message: format!("file input promise rejected: {e:?}"),
-        }
-    })?;
+        })?;
 
     // Read selected files.
     let file_list = match input.files() {
@@ -170,11 +159,12 @@ async fn pick_files(
         let mime_type = if mime.is_empty() { None } else { Some(mime) };
 
         let array_buf_promise = file.array_buffer();
-        let array_buf = JsFuture::from(array_buf_promise).await.map_err(|e| {
-            PickerError::Platform {
-                message: format!("arrayBuffer() failed: {e:?}"),
-            }
-        })?;
+        let array_buf =
+            JsFuture::from(array_buf_promise)
+                .await
+                .map_err(|e| PickerError::Platform {
+                    message: format!("arrayBuffer() failed: {e:?}"),
+                })?;
         let uint8 = js_sys::Uint8Array::new(&array_buf);
         let data = uint8.to_vec();
 

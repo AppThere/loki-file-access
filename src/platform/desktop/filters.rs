@@ -105,9 +105,15 @@ mod tests {
             ("text/plain", "txt"),
             ("application/pdf", "pdf"),
             ("application/msword", "doc"),
-            ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+            (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx",
+            ),
             ("application/vnd.ms-excel", "xls"),
-            ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+            (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xlsx",
+            ),
             ("application/vnd.oasis.opendocument.text", "odt"),
             ("image/svg+xml", "svg"),
             ("application/epub+zip", "epub"),
@@ -127,9 +133,11 @@ mod tests {
     fn unlisted_vnd_mime_type_produces_invalid_extension() {
         // An unlisted vnd.* type hits the fallback and produces a dotted
         // subtype that must be rejected by is_valid_extension.
-        let result =
-            mime_types_to_extensions(&["application/vnd.example.format".to_owned()]);
-        assert!(!is_valid_extension(&result[0]), "dotted fallback must be invalid");
+        let result = mime_types_to_extensions(&["application/vnd.example.format".to_owned()]);
+        assert!(
+            !is_valid_extension(&result[0]),
+            "dotted fallback must be invalid"
+        );
     }
 
     #[test]

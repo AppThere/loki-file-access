@@ -29,9 +29,7 @@ pub(super) fn fire_open_document_intent(
 }
 
 /// Fire `ACTION_CREATE_DOCUMENT` via JNI.
-pub(super) fn fire_create_document_intent(
-    options: &SaveOptions,
-) -> Result<(), PickerError> {
+pub(super) fn fire_create_document_intent(options: &SaveOptions) -> Result<(), PickerError> {
     let ctx = ndk_context::android_context();
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
@@ -188,13 +186,13 @@ pub(super) fn get_content_resolver<'a>(
     .map_err(|e| platform_err("getContentResolver object", e))
 }
 
-pub(super) fn jvm_err(e: jni::errors::JniError) -> PickerError {
+pub(super) fn jvm_err(e: jni::errors::Error) -> PickerError {
     PickerError::Platform {
         message: format!("failed to get JavaVM: {e}"),
     }
 }
 
-pub(super) fn attach_err(e: jni::errors::JniError) -> PickerError {
+pub(super) fn attach_err(e: jni::errors::Error) -> PickerError {
     PickerError::Platform {
         message: format!("failed to attach JNI thread: {e}"),
     }

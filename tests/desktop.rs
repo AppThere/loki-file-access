@@ -17,10 +17,8 @@ fn open_read_from_temp_file() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "hello world").unwrap();
 
-    let token = FileAccessToken::deserialize(
-        &create_desktop_token(&path, "test.txt").serialize(),
-    )
-    .unwrap();
+    let token =
+        FileAccessToken::deserialize(&create_desktop_token(&path, "test.txt").serialize()).unwrap();
 
     let mut reader = token.open_read().unwrap();
     let mut contents = String::new();
@@ -84,19 +82,13 @@ fn token_round_trip_serialization() {
 
 #[test]
 fn display_name_returns_filename() {
-    let token = create_desktop_token(
-        std::path::Path::new("/tmp/example.csv"),
-        "example.csv",
-    );
+    let token = create_desktop_token(std::path::Path::new("/tmp/example.csv"), "example.csv");
     assert_eq!(token.display_name(), "example.csv");
 }
 
 #[test]
 fn mime_type_is_none_for_desktop() {
-    let token = create_desktop_token(
-        std::path::Path::new("/tmp/file.txt"),
-        "file.txt",
-    );
+    let token = create_desktop_token(std::path::Path::new("/tmp/file.txt"), "file.txt");
     assert!(token.mime_type().is_none());
 }
 
@@ -133,7 +125,7 @@ fn create_desktop_token(path: &std::path::Path, name: &str) -> FileAccessToken {
             "display_name": name
         }
     });
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(json.to_string().as_bytes());
+    let encoded =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json.to_string().as_bytes());
     FileAccessToken::deserialize(&encoded).unwrap()
 }

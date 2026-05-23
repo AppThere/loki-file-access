@@ -50,11 +50,10 @@ use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, Writ
 fn check_backend_env() -> Result<(), PickerError> {
     if std::env::var("LOKI_FILE_ACCESS_BACKEND").as_deref() == Ok("none") {
         return Err(PickerError::Platform {
-            message:
-                "file picker disabled via LOKI_FILE_ACCESS_BACKEND=none. \
+            message: "file picker disabled via LOKI_FILE_ACCESS_BACKEND=none. \
                  On Linux, the XDG Desktop Portal or zenity must be available. \
                  Unset LOKI_FILE_ACCESS_BACKEND or set it to \"auto\" to re-enable."
-                    .into(),
+                .into(),
         });
     }
     Ok(())
@@ -100,7 +99,11 @@ pub(crate) async fn pick_open_single(
 
     // Capture filter data before building the rfd dialog so the zenity fallback
     // thread closure can take ownership of the same values.
-    let filter_label = options.filter_label.as_deref().unwrap_or("Files").to_owned();
+    let filter_label = options
+        .filter_label
+        .as_deref()
+        .unwrap_or("Files")
+        .to_owned();
     let filter_exts: Vec<String> = if !options.mime_types.is_empty() {
         mime_types_to_extensions(&options.mime_types)
             .into_iter()
@@ -132,15 +135,16 @@ pub(crate) async fn pick_open_single(
                     let (fut, state) = crate::future::new_pick_future();
                     std::thread::spawn(move || {
                         let result =
-                            zenity::pick_file("Open File".into(), filter_label, filter_exts)
-                                .map(|opt| {
+                            zenity::pick_file("Open File".into(), filter_label, filter_exts).map(
+                                |opt| {
                                     opt.map(|path| {
                                         let display_name = file_name_from_path(&path);
                                         FileAccessToken {
                                             inner: TokenInner::Desktop { path, display_name },
                                         }
                                     })
-                                });
+                                },
+                            );
                         crate::future::deliver(&state, result);
                     });
                     return fut.await;
@@ -186,7 +190,11 @@ pub(crate) async fn pick_open_multi(
 ) -> Result<Vec<FileAccessToken>, PickerError> {
     check_backend_env()?;
 
-    let filter_label = options.filter_label.as_deref().unwrap_or("Files").to_owned();
+    let filter_label = options
+        .filter_label
+        .as_deref()
+        .unwrap_or("Files")
+        .to_owned();
     let filter_exts: Vec<String> = if !options.mime_types.is_empty() {
         mime_types_to_extensions(&options.mime_types)
             .into_iter()
@@ -224,8 +232,8 @@ pub(crate) async fn pick_open_multi(
                     let (fut, state) = crate::future::new_pick_future();
                     std::thread::spawn(move || {
                         let result =
-                            zenity::pick_files("Open Files".into(), filter_label, filter_exts)
-                                .map(|paths| {
+                            zenity::pick_files("Open Files".into(), filter_label, filter_exts).map(
+                                |paths| {
                                     paths
                                         .into_iter()
                                         .map(|path| {
@@ -235,7 +243,8 @@ pub(crate) async fn pick_open_multi(
                                             }
                                         })
                                         .collect()
-                                });
+                                },
+                            );
                         crate::future::deliver(&state, result);
                     });
                     return fut.await;

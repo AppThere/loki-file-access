@@ -115,8 +115,7 @@ mod tests {
         fn clone(p: *const ()) -> RawWaker {
             RawWaker::new(p, &VTABLE)
         }
-        const VTABLE: RawWakerVTable =
-            RawWakerVTable::new(clone, noop, noop, noop);
+        const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
         // SAFETY: The noop waker functions are trivially safe — they perform
         // no operations on the data pointer.
         unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) }
@@ -163,20 +162,21 @@ mod tests {
         fn clone_fn(p: *const ()) -> RawWaker {
             RawWaker::new(p, &WAKE_VTABLE)
         }
-        const WAKE_VTABLE: RawWakerVTable =
-            RawWakerVTable::new(clone_fn, wake, wake, noop);
+        const WAKE_VTABLE: RawWakerVTable = RawWakerVTable::new(clone_fn, wake, wake, noop);
 
         WOKEN.store(false, Ordering::SeqCst);
 
         let (mut future, state) = new_pick_future::<i32>();
 
         // SAFETY: The custom waker functions are trivially safe.
-        let waker =
-            unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &WAKE_VTABLE)) };
+        let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &WAKE_VTABLE)) };
         let mut cx = Context::from_waker(&waker);
         let _ = Pin::new(&mut future).poll(&mut cx);
 
         deliver(&state, 99);
-        assert!(WOKEN.load(Ordering::SeqCst), "waker should have been called");
+        assert!(
+            WOKEN.load(Ordering::SeqCst),
+            "waker should have been called"
+        );
     }
 }

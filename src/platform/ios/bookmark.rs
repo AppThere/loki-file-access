@@ -8,9 +8,7 @@
 //! RAII guard that calls `stopAccessingSecurityScopedResource()` on drop.
 
 use crate::error::{AccessError, PickerError};
-use crate::token::{
-    FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek,
-};
+use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
 
 /// Create a [`FileAccessToken`] from an iOS file URL string.
 ///
@@ -40,18 +38,14 @@ pub(super) fn token_from_url(url: &str) -> Result<FileAccessToken, PickerError> 
 /// Resolves the bookmark to a URL, starts accessing the security-scoped
 /// resource, and opens the file.  Returns a [`ScopedBookmarkFile`] that
 /// stops access on drop.
-pub(super) fn open_read_bookmark(
-    bookmark: &[u8],
-) -> Result<Box<dyn ReadSeek>, AccessError> {
+pub(super) fn open_read_bookmark(bookmark: &[u8]) -> Result<Box<dyn ReadSeek>, AccessError> {
     // In a full implementation:
     // 1. Resolve bookmark via NSURL.init(resolvingBookmarkData:...)
     // 2. Call startAccessingSecurityScopedResource()
     // 3. Open the file path for reading
     // 4. Wrap in ScopedBookmarkFile
-    let _url = String::from_utf8(bookmark.to_vec()).map_err(|_| {
-        AccessError::Platform {
-            message: "invalid bookmark data".into(),
-        }
+    let _url = String::from_utf8(bookmark.to_vec()).map_err(|_| AccessError::Platform {
+        message: "invalid bookmark data".into(),
     })?;
 
     Err(AccessError::Platform {
@@ -60,13 +54,9 @@ pub(super) fn open_read_bookmark(
 }
 
 /// Open a security-scoped bookmark for writing.
-pub(super) fn open_write_bookmark(
-    bookmark: &[u8],
-) -> Result<Box<dyn WriteSeek>, AccessError> {
-    let _url = String::from_utf8(bookmark.to_vec()).map_err(|_| {
-        AccessError::Platform {
-            message: "invalid bookmark data".into(),
-        }
+pub(super) fn open_write_bookmark(bookmark: &[u8]) -> Result<Box<dyn WriteSeek>, AccessError> {
+    let _url = String::from_utf8(bookmark.to_vec()).map_err(|_| AccessError::Platform {
+        message: "invalid bookmark data".into(),
     })?;
 
     Err(AccessError::Platform {

@@ -12,8 +12,8 @@
 //! [`FileAccessToken::serialize`] and [`FileAccessToken::deserialize`], making
 //! them suitable for persisting in a recent-files list or application database.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use std::path::PathBuf;
 
 use crate::error::{AccessError, TokenParseError};

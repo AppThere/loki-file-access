@@ -21,9 +21,7 @@ use std::sync::Arc;
 use crate::api::{PickOptions, SaveOptions};
 use crate::error::{AccessError, PickerError};
 use crate::future::{deliver, new_pick_future};
-use crate::token::{
-    FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek,
-};
+use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
 
 /// Pick a single file for reading.
 pub(crate) async fn pick_open_single(
@@ -113,9 +111,7 @@ async fn present_picker(
 }
 
 /// Present the document picker for saving a file.
-async fn present_save_picker(
-    _options: &SaveOptions,
-) -> Result<Option<String>, PickerError> {
+async fn present_save_picker(_options: &SaveOptions) -> Result<Option<String>, PickerError> {
     let (future, state) = new_pick_future::<Option<String>>();
     let state_clone = Arc::clone(&state);
 

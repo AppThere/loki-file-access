@@ -13,8 +13,8 @@ pub(in crate::platform) fn check_persisted_permission(
     uri: &str,
 ) -> Result<PermissionStatus, PickerError> {
     let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(super::jni_intents::jvm_err)?;
+    let vm =
+        unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(super::jni_intents::jvm_err)?;
     let mut env = vm
         .attach_current_thread()
         .map_err(super::jni_intents::attach_err)?;
@@ -62,10 +62,11 @@ pub(in crate::platform) fn check_persisted_permission(
             .l()
             .map_err(|e| super::jni_intents::platform_err("toString object", e))
             .and_then(|obj| {
-                env.get_string((&obj).into())
+                let jstr: jni::objects::JString = obj.into();
+                env.get_string(&jstr)
                     .map_err(|e| super::jni_intents::platform_err("read string", e))
-            })?
-            .into();
+                    .map(|js| js.into())
+            })?;
 
         if s == uri {
             return Ok(PermissionStatus::Valid);
@@ -78,8 +79,8 @@ pub(in crate::platform) fn check_persisted_permission(
 /// Open a file descriptor for a content URI via `ContentResolver`.
 pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessError> {
     let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|_| access_err("get JavaVM"))?;
+    let vm =
+        unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|_| access_err("get JavaVM"))?;
     let mut env = vm
         .attach_current_thread()
         .map_err(|_| access_err("attach thread"))?;
@@ -129,9 +130,7 @@ fn parse_uri_for_access<'a>(
     let cls = env
         .find_class("android/net/Uri")
         .map_err(|_| access_err("Uri class"))?;
-    let s = env
-        .new_string(uri)
-        .map_err(|_| access_err("URI string"))?;
+    let s = env.new_string(uri).map_err(|_| access_err("URI string"))?;
     env.call_static_method(
         &cls,
         "parse",

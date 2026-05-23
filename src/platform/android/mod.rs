@@ -28,17 +28,16 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::api::{PickOptions, SaveOptions};
 use crate::error::{AccessError, PickerError};
 use crate::future::{deliver, new_pick_future};
-use crate::token::{
-    FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek,
-};
+use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
+
+type SharedPickState = Arc<Mutex<crate::future::PickState<Option<String>>>>;
 
 /// Pending pick state shared between the intent launcher and the JNI callback.
-static PENDING_PICK: OnceLock<
-    Mutex<Option<Arc<Mutex<crate::future::PickState<Option<String>>>>>>,
-> = OnceLock::new();
+#[allow(clippy::type_complexity)]
+static PENDING_PICK: OnceLock<Mutex<Option<SharedPickState>>> = OnceLock::new();
 
-fn pending_pick(
-) -> &'static Mutex<Option<Arc<Mutex<crate::future::PickState<Option<String>>>>>> {
+#[allow(clippy::type_complexity)]
+fn pending_pick() -> &'static Mutex<Option<SharedPickState>> {
     PENDING_PICK.get_or_init(|| Mutex::new(None))
 }
 
@@ -51,8 +50,7 @@ pub(crate) async fn pick_open_single(
         None => Ok(None),
         Some(uri_str) => {
             jni_intents::take_persistable_uri_permission(&uri_str)?;
-            let display_name =
-                uri_str.rsplit('/').next().unwrap_or("unnamed").to_owned();
+            let display_name = uri_str.rsplit('/').next().unwrap_or("unnamed").to_owned();
             Ok(Some(FileAccessToken {
                 inner: TokenInner::Android {
                     uri: uri_str,
@@ -73,8 +71,7 @@ pub(crate) async fn pick_open_multi(
         None => Ok(vec![]),
         Some(uri_str) => {
             jni_intents::take_persistable_uri_permission(&uri_str)?;
-            let display_name =
-                uri_str.rsplit('/').next().unwrap_or("unnamed").to_owned();
+            let display_name = uri_str.rsplit('/').next().unwrap_or("unnamed").to_owned();
             Ok(vec![FileAccessToken {
                 inner: TokenInner::Android {
                     uri: uri_str,
@@ -118,7 +115,7 @@ pub(crate) fn open_read(inner: &TokenInner) -> Result<Box<dyn ReadSeek>, AccessE
             // SAFETY: `open_fd` returns a valid file descriptor from
             // Android's `ContentResolver.openFileDescriptor` after detaching
             // it.  The caller takes ownership; it must not be double-closed.
-            let file = unsafe { std::os::fd::FromRawFd::from_raw_fd(fd) };
+            let file: std::fs::File = unsafe { std::os::fd::FromRawFd::from_raw_fd(fd) };
             Ok(Box::new(file))
         }
         _ => Err(AccessError::Platform {
@@ -133,8 +130,7 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
         TokenInner::Android { uri, .. } => {
             let fd = jni_fd::open_fd(uri, "w")?;
             // SAFETY: Same invariant as `open_read` — see above.
-            let file: std::fs::File =
-                unsafe { std::os::fd::FromRawFd::from_raw_fd(fd) };
+            let file: std::fs::File = unsafe { std::os::fd::FromRawFd::from_raw_fd(fd) };
             Ok(Box::new(file))
         }
         _ => Err(AccessError::Platform {
@@ -146,14 +142,16 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
 /// Check whether a persistable URI permission is still held.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {
-        TokenInner::Android { uri, .. } => jni_fd::check_persisted_permission(uri)
-            .unwrap_or(PermissionStatus::Unknown),
+        TokenInner::Android { uri, .. } => {
+            jni_fd::check_persisted_permission(uri).unwrap_or(PermissionStatus::Unknown)
+        }
         _ => PermissionStatus::Unknown,
     }
 }
 
 /// Called from Java's `onActivityResult` via JNI to deliver the selected
 /// URI (or `None` if the user cancelled) and wake the pending future.
+#[allow(dead_code)] // Called from external Android Activity JNI layer
 pub fn on_activity_result(uri: Option<String>) {
     let guard = match pending_pick().lock() {
         Ok(g) => g,
@@ -187,9 +185,7 @@ async fn launch_open_intent(
 }
 
 /// Launch `ACTION_CREATE_DOCUMENT` and await the result.
-async fn launch_create_intent(
-    options: &SaveOptions,
-) -> Result<Option<String>, PickerError> {
+async fn launch_create_intent(options: &SaveOptions) -> Result<Option<String>, PickerError> {
     let (future, state) = new_pick_future::<Option<String>>();
     store_pending(state)?;
     jni_intents::fire_create_document_intent(options)?;
