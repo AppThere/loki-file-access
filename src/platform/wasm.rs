@@ -80,6 +80,16 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
     }
 }
 
+/// Delete the file referenced by a token.
+///
+/// WASM tokens wrap an in-memory buffer with no backing filesystem, so there
+/// is nothing to delete.  Return an explicit unsupported error.
+pub(crate) fn delete(_inner: &TokenInner) -> Result<(), AccessError> {
+    Err(AccessError::Unsupported {
+        operation: "delete (WASM in-memory tokens have no backing file)".into(),
+    })
+}
+
 /// WASM tokens are always valid while the page is loaded.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {

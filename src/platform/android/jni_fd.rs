@@ -5,6 +5,7 @@
 //!
 //! Split from [`super::jni_intents`] to keep each file under 300 lines.
 
+use super::jni_common::{attach_err, jvm_err, platform_err};
 use crate::error::{AccessError, PickerError};
 use crate::token::PermissionStatus;
 
@@ -13,11 +14,8 @@ pub(in crate::platform) fn check_persisted_permission(
     uri: &str,
 ) -> Result<PermissionStatus, PickerError> {
     let ctx = ndk_context::android_context();
-    let vm =
-        unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(super::jni_intents::jvm_err)?;
-    let mut env = vm
-        .attach_current_thread()
-        .map_err(super::jni_intents::attach_err)?;
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
+    let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
     let resolver = super::jni_intents::get_content_resolver(&mut env, &ctx)?;
 
@@ -28,15 +26,15 @@ pub(in crate::platform) fn check_persisted_permission(
             "()Ljava/util/List;",
             &[],
         )
-        .map_err(|e| super::jni_intents::platform_err("getPersistedUriPermissions", e))?
+        .map_err(|e| platform_err("getPersistedUriPermissions", e))?
         .l()
-        .map_err(|e| super::jni_intents::platform_err("result", e))?;
+        .map_err(|e| platform_err("result", e))?;
 
     let size = env
         .call_method(&list, "size", "()I", &[])
-        .map_err(|e| super::jni_intents::platform_err("size", e))?
+        .map_err(|e| platform_err("size", e))?
         .i()
-        .map_err(|e| super::jni_intents::platform_err("size int", e))?;
+        .map_err(|e| platform_err("size int", e))?;
 
     for i in 0..size {
         let perm = env
@@ -46,25 +44,25 @@ pub(in crate::platform) fn check_persisted_permission(
                 "(I)Ljava/lang/Object;",
                 &[jni::objects::JValueGen::Int(i)],
             )
-            .map_err(|e| super::jni_intents::platform_err("get", e))?
+            .map_err(|e| platform_err("get", e))?
             .l()
-            .map_err(|e| super::jni_intents::platform_err("get object", e))?;
+            .map_err(|e| platform_err("get object", e))?;
 
         let perm_uri = env
             .call_method(&perm, "getUri", "()Landroid/net/Uri;", &[])
-            .map_err(|e| super::jni_intents::platform_err("getUri", e))?
+            .map_err(|e| platform_err("getUri", e))?
             .l()
-            .map_err(|e| super::jni_intents::platform_err("getUri object", e))?;
+            .map_err(|e| platform_err("getUri object", e))?;
 
         let s: String = env
             .call_method(&perm_uri, "toString", "()Ljava/lang/String;", &[])
-            .map_err(|e| super::jni_intents::platform_err("toString", e))?
+            .map_err(|e| platform_err("toString", e))?
             .l()
-            .map_err(|e| super::jni_intents::platform_err("toString object", e))
+            .map_err(|e| platform_err("toString object", e))
             .and_then(|obj| {
                 let jstr: jni::objects::JString = obj.into();
                 env.get_string(&jstr)
-                    .map_err(|e| super::jni_intents::platform_err("read string", e))
+                    .map_err(|e| platform_err("read string", e))
                     .map(|js| js.into())
             })?;
 

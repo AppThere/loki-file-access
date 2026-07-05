@@ -73,3 +73,9 @@ pub mod token;
 pub use api::{FilePicker, PickOptions, SaveOptions};
 pub use error::{AccessError, PickerError, TokenParseError};
 pub use token::{FileAccessToken, PermissionStatus, ReadSeek, WriteSeek};
+
+#[cfg(target_os = "android")]
+pub use platform::{
+    init_android, install_ime_listener, on_activity_result, query_insets_dp,
+    query_window_insets_dp, set_ime_visibility_listener,
+};

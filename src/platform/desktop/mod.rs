@@ -384,6 +384,19 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
     }
 }
 
+/// Delete the file referenced by a token.
+pub(crate) fn delete(inner: &TokenInner) -> Result<(), AccessError> {
+    match inner {
+        TokenInner::Desktop { path, .. } => {
+            std::fs::remove_file(path)?;
+            Ok(())
+        }
+        _ => Err(AccessError::Platform {
+            message: "non-desktop token on desktop platform".into(),
+        }),
+    }
+}
+
 /// Check permission status for a token.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {

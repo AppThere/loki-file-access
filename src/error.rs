@@ -68,6 +68,13 @@ pub enum AccessError {
         /// Human-readable description of the platform error.
         message: String,
     },
+
+    /// The requested operation is not supported on the current platform.
+    #[error("operation not supported on this platform: {operation}")]
+    Unsupported {
+        /// Description of the unsupported operation.
+        operation: String,
+    },
 }
 
 /// Errors that can occur when deserializing a stored [`crate::FileAccessToken`].
@@ -158,6 +165,16 @@ mod tests {
         let msg = err.to_string();
         assert!(!msg.is_empty());
         assert!(msg.contains("fd error"));
+    }
+
+    #[test]
+    fn access_error_unsupported_displays_message() {
+        let err = AccessError::Unsupported {
+            operation: "delete".into(),
+        };
+        let msg = err.to_string();
+        assert!(!msg.is_empty());
+        assert!(msg.contains("delete"));
     }
 
     #[test]

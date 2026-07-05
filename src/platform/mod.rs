@@ -17,28 +17,33 @@
 mod desktop;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
 pub(crate) use desktop::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, delete, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
 };
 
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
 pub(crate) use android::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, delete, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+};
+#[cfg(target_os = "android")]
+pub use android::{
+    init_android, install_ime_listener, on_activity_result, query_insets_dp,
+    query_window_insets_dp, set_ime_visibility_listener,
 };
 
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]
 pub(crate) use ios::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, delete, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
 };
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use wasm::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, delete, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
 };
 
 // Ensure a compile error on unsupported platforms rather than silent failure.

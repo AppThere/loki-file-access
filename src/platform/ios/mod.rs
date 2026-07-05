@@ -81,6 +81,16 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
     }
 }
 
+/// Delete the file referenced by a token.
+///
+/// Deleting a security-scoped bookmarked file is not currently implemented.
+/// Return an explicit unsupported error rather than silently succeeding.
+pub(crate) fn delete(_inner: &TokenInner) -> Result<(), AccessError> {
+    Err(AccessError::Unsupported {
+        operation: "delete (iOS bookmarked-file deletion not implemented)".into(),
+    })
+}
+
 /// Check whether a bookmark is still resolvable.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {

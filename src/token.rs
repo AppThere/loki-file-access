@@ -102,6 +102,46 @@ impl FileAccessToken {
         crate::platform::open_write(&self.inner)
     }
 
+    /// Delete the underlying file.
+    ///
+    /// On desktop this removes the file from the filesystem.  On platforms
+    /// where deletion is not yet implemented (Android, iOS, WASM) this returns
+    /// [`AccessError::Unsupported`] rather than silently succeeding.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AccessError`] if the file cannot be deleted or deletion is
+    /// not supported on the current platform.
+    #[must_use = "this returns a Result that may contain an error"]
+    pub fn delete(&self) -> Result<(), AccessError> {
+        crate::platform::delete(&self.inner)
+    }
+
+    /// Copy the full contents of this file into `dest`.
+    ///
+    /// Reads all bytes from `self` via [`open_read`](Self::open_read) and writes
+    /// them to `dest` via [`open_write`](Self::open_write).  This works across
+    /// every platform because it relies only on the token I/O primitives, not
+    /// on filesystem paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AccessError`] if either token cannot be opened or an I/O error
+    /// occurs while transferring bytes.
+    #[must_use = "this returns a Result that may contain an error"]
+    pub fn copy_bytes_to(&self, dest: &FileAccessToken) -> Result<(), AccessError> {
+        use std::io::{Read as _, Write as _};
+
+        let mut reader = self.open_read()?;
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+
+        let mut writer = dest.open_write()?;
+        writer.write_all(&bytes)?;
+        writer.flush()?;
+        Ok(())
+    }
+
     /// Returns the user-visible display name of the file (typically the filename).
     #[must_use]
     pub fn display_name(&self) -> &str {
@@ -274,6 +314,87 @@ mod tests {
             result.unwrap_err(),
             TokenParseError::InvalidJson { .. }
         ));
+    }
+
+    // The following tests exercise the platform-routed operations.  They only
+    // run on desktop targets, where the desktop backend is compiled in.
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    fn desktop_token_for(path: &std::path::Path) -> FileAccessToken {
+        FileAccessToken {
+            inner: TokenInner::Desktop {
+                path: path.to_path_buf(),
+                display_name: path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unnamed")
+                    .to_owned(),
+            },
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[test]
+    fn desktop_delete_removes_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("loki_delete_test_{}.txt", std::process::id()));
+        std::fs::write(&path, b"hello").expect("write temp file");
+        assert!(path.exists());
+
+        let token = desktop_token_for(&path);
+        token.delete().expect("delete should succeed");
+        assert!(!path.exists(), "file must be gone after delete");
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[test]
+    fn desktop_delete_missing_file_is_io_error() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("loki_delete_missing_{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let token = desktop_token_for(&path);
+        let err = token
+            .delete()
+            .expect_err("deleting a missing file must error");
+        assert!(matches!(err, AccessError::Io { .. }));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[test]
+    fn desktop_copy_bytes_to_duplicates_contents() {
+        let dir = std::env::temp_dir();
+        let pid = std::process::id();
+        let src_path = dir.join(format!("loki_copy_src_{pid}.txt"));
+        let dest_path = dir.join(format!("loki_copy_dest_{pid}.txt"));
+        std::fs::write(&src_path, b"copy me").expect("write source");
+        let _ = std::fs::remove_file(&dest_path);
+
+        let src = desktop_token_for(&src_path);
+        let dest = desktop_token_for(&dest_path);
+        src.copy_bytes_to(&dest).expect("copy should succeed");
+
+        let copied = std::fs::read(&dest_path).expect("read dest");
+        assert_eq!(copied, b"copy me");
+
+        let _ = std::fs::remove_file(&src_path);
+        let _ = std::fs::remove_file(&dest_path);
+    }
+
+    // On non-desktop targets the unsupported-platform path is taken: deleting
+    // any token must surface AccessError::Unsupported rather than succeed.
+    #[cfg(any(target_os = "android", target_os = "ios", target_arch = "wasm32"))]
+    #[test]
+    fn non_desktop_delete_is_unsupported() {
+        let token = FileAccessToken {
+            inner: TokenInner::Desktop {
+                path: PathBuf::from("/tmp/whatever.txt"),
+                display_name: "whatever.txt".into(),
+            },
+        };
+        let err = token
+            .delete()
+            .expect_err("delete must be unsupported off-desktop");
+        assert!(matches!(err, AccessError::Unsupported { .. }));
     }
 
     #[test]
